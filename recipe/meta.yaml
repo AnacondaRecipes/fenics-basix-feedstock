@@ -43,10 +43,10 @@ outputs:
         - make  # [unix]
         - pkg-config
       host:
-        # follow the aggregate blas_impl variant instead of linking netlib
-        # (numpy on pkgs/main is built against mkl or openblas)
-        - openblas-devel {{ openblas }}  # [blas_impl == 'openblas']
-        - mkl-devel {{ mkl }}  # [blas_impl == 'mkl']
+        # openblas on every platform: numpy's mkl builds on pkgs/main require
+        # mkl <2024, while mkl-devel on pkgs/main is 2025 (unsatisfiable at run
+        # time); numpy ships a blas=openblas build for every shipped platform
+        - openblas-devel {{ openblas }}
     test:
       commands:
         - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
