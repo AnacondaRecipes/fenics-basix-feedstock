@@ -3,15 +3,13 @@ cd cpp
 
 export CMAKE_BUILD_PARALLEL_LEVEL=${CPU_COUNT}
 
-# explicitly link cblas, since FindBLAS doesn't cover it,
-# but it's needed when building against netlib
+# host provides exactly one BLAS implementation (mkl-devel or openblas-devel);
+# FindBLAS/FindLAPACK discover it from $PREFIX
 cmake \
   ${CMAKE_ARGS} \
   -DCMAKE_BUILD_TYPE=Release \
   -B build-dir \
   -DCMAKE_INSTALL_PREFIX="$PREFIX" \
-  -DBLA_VENDOR="Generic" \
-  -DBLAS_LIBRARIES="$PREFIX/lib/libblas${SHLIB_EXT};$PREFIX/lib/libcblas${SHLIB_EXT}" \
   -S .
 cmake --build build-dir
 cmake --install build-dir

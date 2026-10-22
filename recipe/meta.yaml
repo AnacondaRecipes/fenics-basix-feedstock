@@ -1,0 +1,128 @@
+{% set name = "fenics-basix" %}
+{% set version = "0.11.0" %}
+# fenics-basix ships nanobind bindings; the ABI version below comes from
+# nanobind 2.15.0 (the nanobind build on pkgs/main), see
+# https://github.com/wjakob/nanobind/blob/v2.15.0/src/nb_abi.h
+{% set nanobind_abi = "21" %}
+{% set abi_version = "2.21" %}
+
+package:
+  name: {{ name }}-meta
+  version: {{ version }}
+
+source:
+  url: https://github.com/fenics/basix/archive/refs/tags/v{{ version }}.tar.gz
+  sha256: bb4355f4cd3c98d5e944c2b8596f3240225d0a8ab3bd1344133d2056a7b2c388
+
+build:
+  number: 0
+  # upstream requires-python >=3.11
+  skip: true  # [py<311]
+
+requirements:
+  # python in the parent render is required for the {{ PYTHON }}-based output
+  # scripts; it also drives the per-python variant matrix of fenics-basix
+  host:
+    - python
+
+outputs:
+  - name: fenics-libbasix
+    script: build-libbasix.sh  # [unix]
+    script: build-libbasix.bat  # [win]
+    build:
+      # python-independent library, but kept in every python variant so the
+      # pin_subpackage pin below always resolves to a sibling built here
+      string: py{{ CONDA_PY }}h{{ PKG_HASH }}_{{ PKG_BUILDNUM }}
+      run_exports:
+        - {{ pin_subpackage('fenics-libbasix', max_pin='x.x.x') }}
+    requirements:
+      build:
+        - {{ compiler('cxx') }}
+        - {{ stdlib('c') }}
+        - cmake
+        - make  # [unix]
+        - pkg-config
+      host:
+        # openblas on every platform: numpy's mkl builds on pkgs/main require
+        # mkl <2024, while mkl-devel on pkgs/main is 2025 (unsatisfiable at run
+        # time); numpy ships a blas=openblas build for every shipped platform
+        - openblas-devel {{ openblas }}
+    test:
+      commands:
+        - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
+        - if not exist %LIBRARY_BIN%\\basix.dll exit 1  # [win]
+        - test -f $PREFIX/lib/cmake/basix/BasixConfig.cmake  # [unix]
+        - if not exist %LIBRARY_LIB%\\cmake\\basix\\BasixConfig.cmake exit 1  # [win]
+
+  - name: fenics-basix-nanobind-abi
+    version: {{ abi_version }}
+    build:
+      # version marker package, independent of the basix version
+      string: py{{ CONDA_PY }}h{{ PKG_HASH }}_{{ PKG_BUILDNUM }}
+      run_exports:
+        - fenics-basix-nanobind-abi {{ abi_version }}.*
+    requirements:
+      run_constrained:
+        - nanobind-abi =={{ nanobind_abi }}
+        # confine to nanobind builds carrying the nanobind_abi constraint
+        - nanobind >=2.4
+    test:
+      commands:
+        - echo ok
+
+  - name: {{ name }}
+    script: build-basix-py.sh  # [unix]
+    script: build-basix-py.bat  # [win]
+    build:
+      run_exports:
+        - fenics-basix-nanobind-abi {{ abi_version }}.*
+    requirements:
+      build:
+        - {{ compiler('cxx') }}
+        - {{ stdlib('c') }}
+        - cmake
+        - make  # [unix]
+        - pkg-config
+      host:
+        - python
+        - pip
+        - scikit-build-core
+        # pinned to the nanobind on pkgs/main; bump together with nanobind_abi
+        - nanobind 2.15.0
+        # ABI-compatible coupling: fenics-libbasix exports the same x.x.x range
+        - fenics-libbasix {{ version }}.*
+      run:
+        - python
+        - fenics-libbasix {{ version }}.*
+        - numpy >=2
+        - fenics-basix-nanobind-abi {{ abi_version }}.*
+    test:
+      source_files:
+        - test
+      imports:
+        - basix
+      requires:
+        - pip
+        - pytest
+      commands:
+        - pip check
+        - pytest -v test/test_create.py
+
+about:
+  home: https://fenicsproject.org
+  license: MIT
+  license_family: MIT
+  license_file: LICENSE
+  summary: Basix is a finite element definition and tabulation runtime library
+  description: |
+    Basix is a finite element definition and tabulation runtime library. It
+    provides a unified interface for creating and tabulating finite elements,
+    and is used by FFCx and DOLFINx.
+  doc_url: https://docs.fenicsproject.org
+  dev_url: https://github.com/fenics/basix
+
+extra:
+  skip-lints:
+    - missing_imports_or_run_test_py  # C++ library and ABI marker have no python imports
+  recipe-maintainers:
+    - minrk
