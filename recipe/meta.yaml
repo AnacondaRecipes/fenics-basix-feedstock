@@ -30,9 +30,9 @@ outputs:
     script: build-libbasix.sh  # [unix]
     script: build-libbasix.bat  # [win]
     build:
-      # no python dependency: build the C++ library once per platform only,
-      # otherwise every python variant produces an identical artifact
-      skip: true  # [py!=311]
+      # python-independent library, but kept in every python variant so the
+      # pin_subpackage pin below always resolves to a sibling built here
+      string: py{{ CONDA_PY }}h{{ PKG_HASH }}_{{ PKG_BUILDNUM }}
       run_exports:
         - {{ pin_subpackage('fenics-libbasix', max_pin='x.x.x') }}
     requirements:
@@ -47,9 +47,6 @@ outputs:
         # (numpy on pkgs/main is built against mkl or openblas)
         - openblas-devel {{ openblas }}  # [blas_impl == 'openblas']
         - mkl-devel {{ mkl }}  # [blas_impl == 'mkl']
-      run:
-        - libopenblas  # [blas_impl == 'openblas']
-        - mkl {{ mkl }}.*  # [blas_impl == 'mkl']
     test:
       commands:
         - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
@@ -61,7 +58,7 @@ outputs:
     version: {{ abi_version }}
     build:
       # version marker package, independent of the basix version
-      skip: true  # [py!=311]
+      string: py{{ CONDA_PY }}h{{ PKG_HASH }}_{{ PKG_BUILDNUM }}
       run_exports:
         - fenics-basix-nanobind-abi {{ abi_version }}.*
     requirements:
