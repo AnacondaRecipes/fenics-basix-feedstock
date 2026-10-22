@@ -43,9 +43,13 @@ outputs:
         - make  # [unix]
         - pkg-config
       host:
-        - libblas 3.9.0
-        - libcblas 3.9.0  # not linked, but required by FindLAPACK
-        - liblapack 3.9.0
+        # follow the aggregate blas_impl variant instead of linking netlib
+        # (numpy on pkgs/main is built against mkl or openblas)
+        - openblas-devel {{ openblas }}  # [blas_impl == 'openblas']
+        - mkl-devel {{ mkl }}  # [blas_impl == 'mkl']
+      run:
+        - libopenblas  # [blas_impl == 'openblas']
+        - mkl {{ mkl }}.*  # [blas_impl == 'mkl']
     test:
       commands:
         - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
