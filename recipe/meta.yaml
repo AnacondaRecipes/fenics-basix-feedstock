@@ -11,8 +11,12 @@ package:
   version: {{ version }}
 
 source:
-  url: https://github.com/fenics/basix/archive/refs/tags/v{{ version }}.tar.gz
-  sha256: bb4355f4cd3c98d5e944c2b8596f3240225d0a8ab3bd1344133d2056a7b2c388
+  - url: https://github.com/fenics/basix/archive/refs/tags/v{{ version }}.tar.gz
+    sha256: bb4355f4cd3c98d5e944c2b8596f3240225d0a8ab3bd1344133d2056a7b2c388
+  # vendored mdspan (cpp/basix/mdspan.hpp) is Apache-2.0 WITH LLVM-exception
+  - url: https://raw.githubusercontent.com/kokkos/mdspan/mdspan-0.6.0/LICENSE
+    sha256: a1a3a9575a88ed1f2173dcc1599ddc096c8dfab7b74fe4e6146021bd68151240
+    folder: mdspan-license
 
 build:
   number: 0
@@ -43,10 +47,8 @@ outputs:
         - make  # [unix]
         - pkg-config
       host:
-        # openblas on every platform: numpy's mkl builds on pkgs/main require
-        # mkl <2024, while mkl-devel on pkgs/main is 2025 (unsatisfiable at run
-        # time); numpy ships a blas=openblas build for every shipped platform
-        - openblas-devel {{ openblas }}
+        - mkl-devel {{ mkl }}  # [blas_impl == 'mkl']
+        - openblas-devel {{ openblas }}  # [blas_impl == 'openblas']
     test:
       commands:
         - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
@@ -96,6 +98,9 @@ outputs:
         - fenics-libbasix {{ version }}.*
         - numpy >=2
         - fenics-basix-nanobind-abi {{ abi_version }}.*
+      run_constrained:
+        # optional extra in python/pyproject.toml ([project.optional-dependencies].optional)
+        - fenics-ufl >=2026.1.0,<2026.2.0
     test:
       source_files:
         - test
@@ -112,7 +117,9 @@ about:
   home: https://fenicsproject.org
   license: MIT
   license_family: MIT
-  license_file: LICENSE
+  license_file:
+    - LICENSE
+    - mdspan-license/LICENSE
   summary: Basix is a finite element definition and tabulation runtime library
   description: |
     Basix is a finite element definition and tabulation runtime library. It
