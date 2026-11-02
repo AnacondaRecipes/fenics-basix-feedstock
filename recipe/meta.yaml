@@ -17,6 +17,11 @@ source:
   - url: https://raw.githubusercontent.com/kokkos/mdspan/mdspan-0.6.0/LICENSE
     sha256: a1a3a9575a88ed1f2173dcc1599ddc096c8dfab7b74fe4e6146021bd68151240
     folder: mdspan-license
+  # cpp/basix/types.h and math.h are copied from DOLFINx (LGPL-3.0-or-later);
+  # basix ships no copy of the LGPL text, so take it from the same upstream org
+  - url: https://raw.githubusercontent.com/FEniCS/dolfinx/v{{ version }}/COPYING.LESSER
+    sha256: f56039b5ee783a50114de388f95ffe7173001d63c32ed4c00649045eec0cf506
+    folder: lgpl-license
 
 build:
   number: 0
@@ -52,11 +57,26 @@ outputs:
       run:
         - intel-openmp {{ mkl }}.*  # [blas_impl == 'mkl']
     test:
+      source_files:
+        - test/test_cmake
+      requires:
+        - cmake
+        - make  # [unix]
+        - {{ compiler('cxx') }}
+        - {{ stdlib('c') }}
       commands:
         - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
         - if not exist %LIBRARY_BIN%\\basix.dll exit 1  # [win]
         - test -f $PREFIX/lib/cmake/basix/BasixConfig.cmake  # [unix]
         - if not exist %LIBRARY_LIB%\\cmake\\basix\\BasixConfig.cmake exit 1  # [win]
+        # compiles and runs upstream's downstream-CMake example, exercising the
+        # installed headers/config once per BLAS variant
+        - cmake -S test/test_cmake -B build-test -DCMAKE_BUILD_TYPE=Release  # [unix]
+        - cmake --build build-test  # [unix]
+        - ./build-test/a.out  # [unix]
+        - cmake -S test/test_cmake -B build-test  # [win]
+        - cmake --build build-test --config Release  # [win]
+        - build-test\\Release\\a.out.exe  # [win]
 
   - name: fenics-basix-nanobind-abi
     version: {{ abi_version }}
@@ -90,7 +110,7 @@ outputs:
       host:
         - python
         - pip
-        - scikit-build-core
+        - scikit-build-core >=0.11
         # pinned to the nanobind on pkgs/main; bump together with nanobind_abi
         - nanobind 2.15.0
         # ABI-compatible coupling: fenics-libbasix exports the same x.x.x range
@@ -117,10 +137,11 @@ outputs:
 
 about:
   home: https://fenicsproject.org
-  license: MIT
-  license_family: MIT
+  license: MIT AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception
+  license_family: Other
   license_file:
     - LICENSE
+    - lgpl-license/COPYING.LESSER
     - mdspan-license/LICENSE
   summary: Basix is a finite element definition and tabulation runtime library
   description: |
