@@ -1,0 +1,158 @@
+{% set name = "fenics-basix" %}
+{% set version = "0.11.0" %}
+# fenics-basix ships nanobind bindings; the ABI version below comes from
+# nanobind 2.15.0 (the nanobind build on pkgs/main), see
+# https://github.com/wjakob/nanobind/blob/v2.15.0/src/nb_abi.h
+{% set nanobind_abi = "21" %}
+{% set abi_version = "2.21" %}
+
+package:
+  name: {{ name }}-meta
+  version: {{ version }}
+
+source:
+  - url: https://github.com/fenics/basix/archive/refs/tags/v{{ version }}.tar.gz
+    sha256: bb4355f4cd3c98d5e944c2b8596f3240225d0a8ab3bd1344133d2056a7b2c388
+  # vendored mdspan (cpp/basix/mdspan.hpp) is Apache-2.0 WITH LLVM-exception
+  - url: https://raw.githubusercontent.com/kokkos/mdspan/mdspan-0.6.0/LICENSE
+    sha256: a1a3a9575a88ed1f2173dcc1599ddc096c8dfab7b74fe4e6146021bd68151240
+    folder: mdspan-license
+  # cpp/basix/types.h and math.h are copied from DOLFINx (LGPL-3.0-or-later);
+  # basix ships no copy of the LGPL text, so take it from the same upstream org
+  - url: https://raw.githubusercontent.com/FEniCS/dolfinx/v{{ version }}/COPYING.LESSER
+    sha256: f56039b5ee783a50114de388f95ffe7173001d63c32ed4c00649045eec0cf506
+    folder: lgpl-license
+
+build:
+  number: 0
+  # upstream requires-python >=3.11
+  skip: true  # [py<311]
+
+requirements:
+  # python in the parent render is required for the {{ PYTHON }}-based output
+  # scripts; it also drives the per-python variant matrix of fenics-basix
+  host:
+    - python
+
+outputs:
+  - name: fenics-libbasix
+    script: build-libbasix.sh  # [unix]
+    script: build-libbasix.bat  # [win]
+    build:
+      # python-independent library, but kept in every python variant so the
+      # pin_subpackage pin below always resolves to a sibling built here
+      string: py{{ CONDA_PY }}h{{ PKG_HASH }}_{{ PKG_BUILDNUM }}
+      run_exports:
+        - {{ pin_subpackage('fenics-libbasix', max_pin='x.x.x') }}
+    requirements:
+      build:
+        - {{ compiler('cxx') }}
+        - {{ stdlib('c') }}
+        - cmake
+        - make  # [unix]
+        - pkg-config
+      host:
+        - mkl-devel {{ mkl }}  # [blas_impl == 'mkl']
+        - openblas-devel {{ openblas }}  # [blas_impl == 'openblas']
+      run:
+        - intel-openmp {{ mkl }}.*  # [blas_impl == 'mkl']
+    test:
+      source_files:
+        - test/test_cmake
+      requires:
+        - cmake
+        - make  # [unix]
+        - {{ compiler('cxx') }}
+        - {{ stdlib('c') }}
+      commands:
+        - test -f $PREFIX/lib/libbasix${SHLIB_EXT}  # [unix]
+        - if not exist %LIBRARY_BIN%\\basix.dll exit 1  # [win]
+        - test -f $PREFIX/lib/cmake/basix/BasixConfig.cmake  # [unix]
+        - if not exist %LIBRARY_LIB%\\cmake\\basix\\BasixConfig.cmake exit 1  # [win]
+        # compiles and runs upstream's downstream-CMake example, exercising the
+        # installed headers/config once per BLAS variant
+        - cmake -S test/test_cmake -B build-test -DCMAKE_BUILD_TYPE=Release  # [unix]
+        - cmake --build build-test  # [unix]
+        - ./build-test/a.out  # [unix]
+        - cmake -S test/test_cmake -B build-test  # [win]
+        - cmake --build build-test --config Release  # [win]
+        - build-test\\Release\\a.out.exe  # [win]
+
+  - name: fenics-basix-nanobind-abi
+    version: {{ abi_version }}
+    build:
+      # version marker package, independent of the basix version
+      string: py{{ CONDA_PY }}h{{ PKG_HASH }}_{{ PKG_BUILDNUM }}
+      run_exports:
+        - fenics-basix-nanobind-abi {{ abi_version }}.*
+    requirements:
+      run_constrained:
+        - nanobind-abi =={{ nanobind_abi }}
+        # confine to nanobind builds carrying the nanobind_abi constraint
+        - nanobind >=2.4
+    test:
+      commands:
+        - echo ok
+
+  - name: {{ name }}
+    script: build-basix-py.sh  # [unix]
+    script: build-basix-py.bat  # [win]
+    build:
+      run_exports:
+        - fenics-basix-nanobind-abi {{ abi_version }}.*
+    requirements:
+      build:
+        - {{ compiler('cxx') }}
+        - {{ stdlib('c') }}
+        - cmake
+        - make  # [unix]
+        - pkg-config
+      host:
+        - python
+        - pip
+        - scikit-build-core >=0.11
+        # pinned to the nanobind on pkgs/main; bump together with nanobind_abi
+        - nanobind 2.15.0
+        # ABI-compatible coupling: fenics-libbasix exports the same x.x.x range
+        - fenics-libbasix {{ version }}.*
+      run:
+        - python
+        - fenics-libbasix {{ version }}.*
+        - numpy >=2
+        - fenics-basix-nanobind-abi {{ abi_version }}.*
+      run_constrained:
+        # optional extra in python/pyproject.toml ([project.optional-dependencies].optional)
+        - fenics-ufl >=2026.1.0,<2026.2.0
+    test:
+      source_files:
+        - test
+      imports:
+        - basix
+      requires:
+        - pip
+        - pytest
+      commands:
+        - pip check
+        - pytest -v test/test_create.py
+
+about:
+  home: https://fenicsproject.org
+  license: MIT AND LGPL-3.0-or-later AND Apache-2.0 WITH LLVM-exception
+  license_family: Other
+  license_file:
+    - LICENSE
+    - lgpl-license/COPYING.LESSER
+    - mdspan-license/LICENSE
+  summary: Basix is a finite element definition and tabulation runtime library
+  description: |
+    Basix is a finite element definition and tabulation runtime library. It
+    provides a unified interface for creating and tabulating finite elements,
+    and is used by FFCx and DOLFINx.
+  doc_url: https://docs.fenicsproject.org
+  dev_url: https://github.com/fenics/basix
+
+extra:
+  skip-lints:
+    - missing_imports_or_run_test_py  # C++ library and ABI marker have no python imports
+  recipe-maintainers:
+    - minrk
